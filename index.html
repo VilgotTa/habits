@@ -42,6 +42,14 @@
   #rem-btn{background:#e67e22;color:#fff;margin-top:8px;}
   .hint{font-size:12px;color:#777;margin:-4px 2px 10px;}
   .hidden{display:none;}
+
+  .toggle-btn{background:#1c1c1c;color:#ccc;text-align:left;display:flex;
+    justify-content:space-between;align-items:center;font-size:15px;padding:12px 14px;}
+  .toggle-btn .chev{transition:transform 0.15s;color:#666;}
+  .toggle-btn.open .chev{transform:rotate(90deg);}
+  .collapsible{overflow:hidden;max-height:0;transition:max-height 0.2s ease;}
+  .collapsible.open{max-height:600px;}
+  .collapsible-inner{padding-top:12px;}
 </style>
 </head>
 <body>
@@ -56,41 +64,48 @@
 <div id="status"></div>
 
 <div class="section">
-  <h3>Lägg till habit</h3>
-  <input type="text" id="new-name" placeholder="Namn (t.ex. Stretch)">
-  <select id="new-type" onchange="toggleFields()">
-    <option value="bool">Ja/nej</option>
-    <option value="num">Mätbar (siffra)</option>
-  </select>
+  <button class="toggle-btn" id="manage-toggle" onclick="toggleManage()">
+    <span>Hantera habits</span><span class="chev">›</span>
+  </button>
+  <div class="collapsible" id="manage-body">
+    <div class="collapsible-inner">
 
-  <select id="new-period">
-    <option value="day">Mål per dag</option>
-    <option value="week">Mål per vecka (mån–sön)</option>
-    <option value="month">Mål per månad</option>
-    <option value="none">Inget mål – bara logga</option>
-  </select>
+      <h3>Lägg till habit</h3>
+      <input type="text" id="new-name" placeholder="Namn (t.ex. Stretch)">
+      <select id="new-type" onchange="toggleFields()">
+        <option value="bool">Ja/nej</option>
+        <option value="num">Mätbar (siffra)</option>
+      </select>
 
-  <div id="target-fields">
-    <input type="number" id="new-target" step="any" placeholder="Målvärde (t.ex. 200)">
-    <select id="new-dir">
-      <option value="min">Minst målvärdet (mer är bättre)</option>
-      <option value="max">Högst målvärdet (mindre är bättre)</option>
-    </select>
+      <select id="new-period">
+        <option value="day">Mål per dag</option>
+        <option value="week">Mål per vecka (mån–sön)</option>
+        <option value="month">Mål per månad</option>
+        <option value="none">Inget mål – bara logga</option>
+      </select>
+
+      <div id="target-fields">
+        <input type="number" id="new-target" step="any" placeholder="Målvärde (t.ex. 200)">
+        <select id="new-dir">
+          <option value="min">Minst målvärdet (mer är bättre)</option>
+          <option value="max">Högst målvärdet (mindre är bättre)</option>
+        </select>
+      </div>
+
+      <div id="unit-field">
+        <input type="text" id="new-unit" placeholder="Enhet (t.ex. sidor, mg) – frivilligt">
+      </div>
+
+      <div class="hint" id="goal-hint"></div>
+      <button id="add-btn" onclick="addHabit()">Lägg till</button>
+
+      <h3 style="margin-top:20px;">Ta bort habit</h3>
+      <select id="rem-select"></select>
+      <div class="hint">Historiken i Sheetet ligger kvar.</div>
+      <button id="rem-btn" onclick="removeHabit()">Ta bort vald</button>
+
+    </div>
   </div>
-
-  <div id="unit-field">
-    <input type="text" id="new-unit" placeholder="Enhet (t.ex. sidor, mg) – frivilligt">
-  </div>
-
-  <div class="hint" id="goal-hint"></div>
-  <button id="add-btn" onclick="addHabit()">Lägg till</button>
-</div>
-
-<div class="section">
-  <h3>Ta bort habit</h3>
-  <select id="rem-select"></select>
-  <div class="hint">Historiken i Sheetet ligger kvar.</div>
-  <button id="rem-btn" onclick="removeHabit()">Ta bort vald</button>
 </div>
 
 <script>
@@ -351,6 +366,11 @@ function onCell(habitName, dateKey) {
   render();
   updateSyncBadge();
   syncQueue();
+}
+
+function toggleManage() {
+  el('manage-toggle').classList.toggle('open');
+  el('manage-body').classList.toggle('open');
 }
 
 function toggleFields() {
