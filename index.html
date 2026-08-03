@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Habits</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#111111">
+<link rel="icon" href="icon-192.png">
+<style>
+  body{font-family:-apple-system,sans-serif;background:#111;color:#fff;margin:0;padding:14px 10px 60px;}
+  h2{margin:6px 4px 2px;font-size:22px;}
+  h3{margin:14px 4px 8px;font-size:16px;}
+  #sync-badge{font-size:13px;color:#aaa;margin:0 4px 10px;}
+  #status{margin:10px 4px;font-size:15px;min-height:20px;color:#f1c40f;}
+
+  .grid{width:100%;border-collapse:collapse;table-layout:fixed;}
+  .grid th{font-size:11px;color:#888;font-weight:600;padding:6px 0;text-align:center;line-height:1.3;}
+  .grid th.namecol{text-align:left;padding-left:6px;width:34%;}
+  .grid td{text-align:center;padding:0;height:52px;border-top:1px solid #262626;}
+  .grid td.name{text-align:left;padding-left:6px;font-size:15px;font-weight:500;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .cell{width:100%;height:52px;background:none;border:none;font-size:20px;cursor:pointer;
+    color:#3a3a3a;font-variant-numeric:tabular-nums;padding:0;}
+  .cell.num{font-size:15px;font-weight:600;}
+  .today{background:#1a1a1a;}
+
+  /* Progresspanel */
+  .prog{margin-top:6px;}
+  .prog-row{padding:9px 6px 11px;border-top:1px solid #262626;}
+  .prog-top{display:flex;justify-content:space-between;align-items:baseline;font-size:14px;margin-bottom:6px;}
+  .prog-name{font-weight:600;}
+  .prog-val{font-variant-numeric:tabular-nums;color:#bbb;font-size:13px;}
+  .bar{height:6px;background:#262626;border-radius:3px;overflow:hidden;}
+  .bar span{display:block;height:100%;border-radius:3px;}
+  .periodlbl{font-size:11px;color:#777;margin-left:6px;font-weight:400;}
+
+  .section{margin-top:16px;padding-top:14px;border-top:1px solid #333;}
+  input,select{font-size:16px;padding:11px;width:100%;box-sizing:border-box;border-radius:8px;border:none;margin-bottom:9px;}
+  button{font-size:16px;padding:13px;border-radius:9px;border:none;cursor:pointer;width:100%;box-sizing:border-box;}
+  #add-btn{background:#3498db;color:#fff;}
+  #rem-btn{background:#e67e22;color:#fff;margin-top:8px;}
+  .hint{font-size:12px;color:#777;margin:-4px 2px 10px;}
+  .hidden{display:none;}
+</style>
+</head>
+<body>
+
+<h2>Habits</h2>
+<div id="sync-badge">Laddar...</div>
+
+<table class="grid" id="grid"></table>
+
+<div class="prog" id="progress"></div>
+
+<div id="status"></div>
+
+<div class="section">
+  <h3>Lägg till habit</h3>
+  <input type="text" id="new-name" placeholder="Namn (t.ex. Stretch)">
+  <select id="new-type" onchange="toggleFields()">
+    <option value="bool">Ja/nej</option>
+    <option value="num">Mätbar (siffra)</option>
+  </select>
+
+  <select id="new-period">
+    <option value="day">Mål per dag</option>
+    <option value="week">Mål per vecka (mån–sön)</option>
+    <option value="month">Mål per månad</option>
+    <option value="none">Inget mål – bara logga</option>
+  </select>
+
+  <div id="target-fields">
+    <input type="number" id="new-target" step="any" placeholder="Målvärde (t.ex. 200)">
+    <select id="new-dir">
+      <option value="min">Minst målvärdet (mer är bättre)</option>
+      <option value="max">Högst målvärdet (mindre är bättre)</option>
+    </select>
+  </div>
+
+  <div id="unit-field">
+    <input type="text" id="new-unit" placeholder="Enhet (t.ex. sidor, mg) – frivilligt">
+  </div>
+
+  <div class="hint" id="goal-hint"></div>
+  <button id="add-btn" onclick="addHabit()">Lägg till</button>
+</div>
+
+<div class="section">
+  <h3>Ta bort habit</h3>
+  <select id="rem-select"></select>
+  <div class="hint">Historiken i Sheetet ligger kvar.</div>
+  <button id="rem-btn" onclick="removeHabit()">Ta bort vald</button>
+</div>
+
+<script>
+// ====== KONFIGURATION ======
+var API_URL = 'KLISTRA_IN_DIN_APPS_SCRIPT_URL_HÄR';
+var API_TOKEN = 'BYT_TILL_EN_EGEN_HEMLIG_KOD';
+var DAYS_SHOWN = 6;
+// ============================
+
+var PALETTE = ['#3498db', '#e74c3c', '#2ecc71', '#f1c40f', '#9b59b6', '#1abc9c', '#e67e22'];
+var DAYNAMES = ['SÖN', 'MÅN', 'TIS', 'ONS', 'TOR', 'FRE', 'LÖR'];
+
+window.onload = function () {
+  render();
+  updateSyncBadge();
+  toggleFields();
+  syncQueue();
+  refreshFromServer();
+};
+
+// ---------- Hjälpare ----------
+function getLocal(k, f) { try { var v = JSON.parse(localStorage.getItem(k)); return v === null ? f : v; } catch (e) { return f; } }
+function setLocal(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
+function el(id) { return document.getElementById(id); }
+function status(m, t) { el('status').innerText = m; if (t) setTimeout(function () { el('status').innerText = ''; }, t); }
+function pad(n) { return n < 10 ? '0' + n : '' + n; }
+function dstr(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+
+function apiGet(a) {
+  return fetch(API_URL + '?action=' + a + '&token=' + encodeURIComponent(API_TOKEN))
+    .then(function (r) { return r.json(); });
+}
+function apiPost(p) {
+  p.token = API_TOKEN;
+  return fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(p),
+  }).then(function (r) { return r.json(); });
+}
+
+// ---------- Perioder ----------
+// Vecka börjar måndag (svensk standard)
+function weekStart(d) {
+  var day = d.getDay();               // 0 = söndag
+  var diff = (day === 0 ? 6 : day - 1);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - diff);
+}
+function monthStart(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+
+function periodRange(period, ref) {
+  if (period === 'week') {
+    var s = weekStart(ref);
+    var e = new Date(s.getFullYear(), s.getMonth(), s.getDate() + 6);
+    return { start: s, end: e, label: 'denna vecka' };
+  }
+  if (period === 'month') {
+    var ms = monthStart(ref);
+    var me = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
+    return { start: ms, end: me, label: 'denna månad' };
+  }
+  return { start: ref, end: ref, label: 'idag' };
+}
+
+// Summerar värden i perioden. Ja/nej räknas som antal gjorda dagar.
+function periodSum(habit, checkins, ref) {
+  var r = periodRange(habit.period, ref);
+  var map = checkins[habit.name] || {};
+  var sum = 0;
+  var d = new Date(r.start.getTime());
+  while (d <= r.end) {
+    var v = map[dstr(d)];
+    if (v !== undefined && v !== null && v !== '') {
+      sum += (habit.type === 'num') ? Number(v) : (Number(v) === 1 ? 1 : 0);
+    }
+    d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+  }
+  return sum;
+}
+
+function hasGoal(h) {
+  return h.period !== 'none' && h.target !== '' && h.target !== null && h.target !== undefined;
+}
+
+// ---------- Server ----------
+function refreshFromServer() {
+  if (!navigator.onLine) return;
+  apiGet('getHabits').then(function (h) {
+    if (Array.isArray(h)) { setLocal('habits', h.map(migrate)); render(); }
+  }).catch(function () {});
+  apiGet('getCheckins').then(function (c) {
+    if (c && !c.error) {
+      var q = getLocal('sync_queue', []);
+      q.forEach(function (x) {
+        if (!c[x.habit]) c[x.habit] = {};
+        c[x.habit][x.date] = x.value;
+      });
+      setLocal('checkins', c);
+      render();
+    }
+  }).catch(function () {});
+}
+
+// Äldre habits saknar period-fältet
+function migrate(h) {
+  if (!h.period) h.period = (h.target === '' || h.target === undefined) ? 'none' : 'day';
+  return h;
+}
+
+function updateSyncBadge() {
+  var q = getLocal('sync_queue', []);
+  var b = el('sync-badge');
+  if (q.length > 0) { b.innerText = '⏳ ' + q.length + ' ändringar väntar på synk'; b.style.color = '#e67e22'; }
+  else { b.innerText = '✓ Allt synkat'; b.style.color = '#aaa'; }
+}
+
+function syncQueue() {
+  if (!navigator.onLine) return;
+  var q = getLocal('sync_queue', []);
+  if (q.length === 0) return;
+  apiPost({ action: 'saveCheckins', checkins: q })
+    .then(function () { setLocal('sync_queue', []); updateSyncBadge(); status('Synkad!', 2000); })
+    .catch(function () { status('Offline — sparat lokalt.', 3000); });
+}
+
+// ---------- Rendering ----------
+function render() {
+  var habits = getLocal('habits', []).map(migrate);
+  var checkins = getLocal('checkins', {});
+  var today = new Date();
+
+  var days = [];
+  for (var i = 0; i < DAYS_SHOWN; i++) {
+    days.push(new Date(today.getFullYear(), today.getMonth(), today.getDate() - i));
+  }
+
+  var html = '<tr><th class="namecol"></th>';
+  days.forEach(function (d, i) {
+    html += '<th' + (i === 0 ? ' class="today"' : '') + '>' + DAYNAMES[d.getDay()] + '<br>' + d.getDate() + '</th>';
+  });
+  html += '</tr>';
+
+  habits.forEach(function (h, hi) {
+    var color = PALETTE[hi % PALETTE.length];
+    html += '<tr><td class="name" style="color:' + color + '">' + escapeHtml(h.name) + '</td>';
+    days.forEach(function (d, di) {
+      var key = dstr(d);
+      var val = (checkins[h.name] || {})[key];
+      html += '<td' + (di === 0 ? ' class="today"' : '') + '>' + cellHtml(h, val, key, color) + '</td>';
+    });
+    html += '</tr>';
+  });
+
+  el('grid').innerHTML = html;
+  renderProgress(habits, checkins, today);
+  renderRemoveSelect(habits);
+}
+
+function cellHtml(h, val, dateKey, color) {
+  var onclick = 'onCell(&quot;' + escapeAttr(h.name) + '&quot;,&quot;' + dateKey + '&quot;)';
+  var logged = !(val === undefined || val === null || val === '');
+
+  if (h.type === 'num') {
+    var shown = logged ? val : '–';
+    var col;
+    if (!logged) col = '#3a3a3a';
+    else if (h.period === 'day' && hasGoal(h)) col = meetsDaily(h, val) ? color : '#777';
+    else col = color; // periodmål bedöms i progresspanelen, inte per dag
+    return '<button class="cell num" style="color:' + col + '" onclick="' + onclick + '">' + shown + '</button>';
+  }
+
+  if (Number(val) === 1) return '<button class="cell" style="color:' + color + '" onclick="' + onclick + '">✓</button>';
+  if (Number(val) === 0 && logged) return '<button class="cell" style="color:#3a3a3a" onclick="' + onclick + '">✗</button>';
+  return '<button class="cell" style="color:#2a2a2a" onclick="' + onclick + '">✗</button>';
+}
+
+function meetsDaily(h, val) {
+  return h.dir === 'max' ? (Number(val) <= h.target) : (Number(val) >= h.target);
+}
+
+function renderProgress(habits, checkins, today) {
+  var rows = habits.filter(function (h) { return hasGoal(h) && h.period !== 'day'; });
+  if (rows.length === 0) { el('progress').innerHTML = ''; return; }
+
+  var html = '';
+  rows.forEach(function (h) {
+    var hi = habits.indexOf(h);
+    var color = PALETTE[hi % PALETTE.length];
+    var r = periodRange(h.period, today);
+    var sum = periodSum(h, checkins, today);
+    var unit = h.unit ? ' ' + h.unit : (h.type === 'bool' ? ' ggr' : '');
+
+    var ok = h.dir === 'max' ? (sum <= h.target) : (sum >= h.target);
+    var barColor = h.dir === 'max'
+      ? (ok ? color : '#e74c3c')
+      : (ok ? color : '#555');
+    var pct = h.target > 0 ? Math.min(100, (sum / h.target) * 100) : 0;
+
+    var goalTxt = (h.dir === 'max' ? 'max ' : 'mål ') + h.target + unit + ' ' + r.label;
+    var left = h.dir === 'max'
+      ? (ok ? (h.target - sum) + unit + ' kvar' : 'över med ' + (sum - h.target) + unit)
+      : (ok ? 'klart ✓' : (h.target - sum) + unit + ' kvar');
+
+    html += '<div class="prog-row">' +
+      '<div class="prog-top">' +
+        '<span class="prog-name" style="color:' + color + '">' + escapeHtml(h.name) +
+          '<span class="periodlbl">' + goalTxt + '</span></span>' +
+        '<span class="prog-val">' + sum + '/' + h.target + unit + ' · ' + left + '</span>' +
+      '</div>' +
+      '<div class="bar"><span style="width:' + pct + '%;background:' + barColor + '"></span></div>' +
+      '</div>';
+  });
+  el('progress').innerHTML = html;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function escapeAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, "\\'");
+}
+
+// ---------- Interaktion ----------
+function onCell(habitName, dateKey) {
+  var habits = getLocal('habits', []).map(migrate);
+  var h = null;
+  habits.forEach(function (x) { if (x.name === habitName) h = x; });
+  if (!h) return;
+
+  var checkins = getLocal('checkins', {});
+  if (!checkins[habitName]) checkins[habitName] = {};
+  var cur = checkins[habitName][dateKey];
+  var next;
+
+  if (h.type === 'num') {
+    var unit = h.unit ? ' (' + h.unit + ')' : '';
+    var input = prompt(habitName + unit + ' — ' + dateKey, (cur === undefined || cur === null) ? '' : cur);
+    if (input === null) return;
+    if (input.trim() === '') next = '';
+    else {
+      next = parseFloat(input.replace(',', '.'));
+      if (isNaN(next)) { status('Ogiltigt värde.', 2500); return; }
+    }
+  } else {
+    if (cur === undefined || cur === null || cur === '') next = 1;
+    else if (Number(cur) === 1) next = 0;
+    else next = '';
+  }
+
+  checkins[habitName][dateKey] = next;
+  setLocal('checkins', checkins);
+
+  var q = getLocal('sync_queue', []);
+  q = q.filter(function (x) { return !(x.habit === habitName && x.date === dateKey); });
+  q.push({ habit: habitName, date: dateKey, value: next });
+  setLocal('sync_queue', q);
+
+  render();
+  updateSyncBadge();
+  syncQueue();
+}
+
+function toggleFields() {
+  var type = el('new-type').value;
+  var period = el('new-period').value;
+  el('unit-field').className = type === 'num' ? '' : 'hidden';
+  el('target-fields').className = period === 'none' ? 'hidden' : '';
+
+  var hint = '';
+  if (period !== 'none') {
+    if (type === 'bool') {
+      hint = 'För ja/nej räknas antal gjorda dagar i perioden. Ex: "minst 4" per vecka.';
+    } else {
+      hint = 'Värdena summeras över perioden. Ex: max 200 mg per vecka.';
+    }
+  }
+  el('goal-hint').innerText = hint;
+}
+el('new-period') && el('new-period').addEventListener('change', toggleFields);
+
+function addHabit() {
+  var name = el('new-name').value.trim();
+  if (!name) { status('Ange ett namn.', 2500); return; }
+  var type = el('new-type').value;
+  var period = el('new-period').value;
+
+  var habit = { name: name, type: type, period: period, target: '', dir: 'min', unit: '' };
+  if (period !== 'none') {
+    var t = el('new-target').value;
+    habit.target = t === '' ? '' : parseFloat(t);
+    habit.dir = el('new-dir').value;
+  }
+  if (type === 'num') habit.unit = el('new-unit').value.trim();
+
+  var habits = getLocal('habits', []).map(migrate);
+  if (habits.some(function (x) { return x.name === name; })) { status('Finns redan.', 2500); return; }
+  habits.push(habit);
+  setLocal('habits', habits);
+  render();
+  el('new-name').value = ''; el('new-target').value = ''; el('new-unit').value = '';
+  status('Habit tillagd!', 2500);
+
+  apiPost({ action: 'addHabit', habit: habit })
+    .then(function (list) { if (Array.isArray(list)) { setLocal('habits', list.map(migrate)); render(); } })
+    .catch(function () { status('Tillagd lokalt — synkas när du har nät.', 3000); });
+}
+
+function renderRemoveSelect(habits) {
+  var sel = el('rem-select');
+  var prev = sel.value;
+  sel.innerHTML = '';
+  habits.forEach(function (h) {
+    var o = document.createElement('option');
+    o.value = h.name; o.innerText = h.name;
+    sel.appendChild(o);
+  });
+  if (prev) sel.value = prev;
+}
+
+function removeHabit() {
+  var name = el('rem-select').value;
+  if (!name) return;
+  if (!confirm('Ta bort habiten "' + name + '"?')) return;
+
+  var habits = getLocal('habits', []).filter(function (h) { return h.name !== name; });
+  setLocal('habits', habits);
+  render();
+  status('Borttagen!', 2500);
+
+  apiPost({ action: 'removeHabit', name: name })
+    .then(function (list) { if (Array.isArray(list)) { setLocal('habits', list.map(migrate)); render(); } })
+    .catch(function () {});
+}
+
+window.addEventListener('online', function () { syncQueue(); refreshFromServer(); });
+</script>
+</body>
+</html>
