@@ -122,8 +122,9 @@ window.onload = function () {
   render();
   updateSyncBadge();
   toggleFields();
-  syncQueue();
-  refreshFromServer();
+  refreshFromServer().then(function () {
+    syncQueue();
+  });
 };
 
 // ---------- Hjälpare ----------
@@ -278,8 +279,8 @@ function cellHtml(h, val, dateKey, color) {
   }
 
   if (Number(val) === 1) return '<button class="cell" style="color:' + color + '" onclick="' + onclick + '">✓</button>';
-  if (Number(val) === 0 && logged) return '<button class="cell" style="color:#3a3a3a" onclick="' + onclick + '">✗</button>';
-  return '<button class="cell" style="color:#2a2a2a" onclick="' + onclick + '">✗</button>';
+  if (Number(val) === 0 && logged) return '<button class="cell" style="color:#e74c3c" onclick="' + onclick + '">✗</button>';
+  return '<button class="cell" style="color:#2a2a2a" onclick="' + onclick + '">·</button>';
 }
 
 function meetsDaily(h, val) {
