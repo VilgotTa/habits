@@ -51,11 +51,17 @@ function getSheet_() {
   var sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) sheet = ss.insertSheet(SHEET_NAME);
   if (sheet.getLastRow() === 0) sheet.appendRow(['Datum', 'Habit', 'Värde']);
+  // Tvinga Datum-kolumnen till text så Sheets inte auto-konverterar "2026-08-06"
+  // till ett Date-objekt (vilket kan skifta en dag beroende på tidszon).
+  sheet.getRange('A:A').setNumberFormat('@');
   return sheet;
 }
 
 function dateKey_(v) {
-  if (v instanceof Date) return Utilities.formatDate(v, 'Europe/Stockholm', 'yyyy-MM-dd');
+  if (v instanceof Date) {
+    var tz = SpreadsheetApp.openById(SHEET_ID).getSpreadsheetTimeZone();
+    return Utilities.formatDate(v, tz, 'yyyy-MM-dd');
+  }
   return String(v);
 }
 
