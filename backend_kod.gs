@@ -15,9 +15,9 @@
  * Habitlistan sparas i Script Properties, inte i Sheetet.
  */
 
-var SHEET_ID = 'DITT_HABITS_SHEET_ID_HÄR';
+var SHEET_ID = '13GlzRS4Aavvx5b4r4bFQYk07fZR5lVlBS5B00TwHPTY';
 var SHEET_NAME = 'Habits';
-var TOKEN = 'BYT_TILL_EN_EGEN_HEMLIG_KOD';
+var TOKEN = 'habits';
 var DAYS_BACK = 90; // hur långt bak getCheckins hämtar
 
 function doGet(e) {
